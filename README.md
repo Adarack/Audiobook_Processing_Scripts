@@ -1,4 +1,16 @@
-# Audiobook Processing Scripts
+# Helper scripts for book processing
+
+My current workflow for downloading and sorting books is as follows.
+
+1. I have a seperate qBittorrent instance just for book downloading. As well as Libation for my Audible books.
+
+2. I have qBittorrent run 01_Download_Sort.sh when a download completes. This will sort my downloads into different directories to be processed as needed.  Example I have my m4b files sent straight to a beets-audible input directory, mp3, m4a, etc. goes to the autom4b recentlyadded to be converted to a single m4b and finally any eBook file goes to a calibre import directory.
+
+3. Once autom4b is done it outputs to the same beets input directory as the m4b's where my files are renamed and tagged.
+
+4. Run beets on the m4b files.
+
+5. Finally I manually run 02_Audiobook_After_Beets.sh on the beets output directory which will rename any additional files, correct and existing cue, and move them to my library.
 
 This repository contains a collection of scripts and configuration files designed to streamline the processing, organization, and management of audiobooks. These tools are tailored for use with Beets, a powerful music library manager, and include custom scripts for downloading, sorting, and post-processing audiobooks.
 
