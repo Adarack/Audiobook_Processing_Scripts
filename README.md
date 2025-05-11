@@ -1,90 +1,12 @@
-# Helper scripts for book processing
-
-My current workflow for downloading and sorting books is as follows.
-
-1. I have a seperate qBittorrent instance just for book downloading. As well as Libation for my Audible books.
-
-2. I have qBittorrent run 01_Download_Sort.sh when a download completes. This will sort my downloads into different directories to be processed as needed.  Example I have my m4b files sent straight to a beets-audible input directory, mp3, m4a, etc. goes to the autom4b recentlyadded to be converted to a single m4b and finally any eBook file goes to a calibre import directory.
-
-3. Once autom4b is done it outputs to the same beets input directory as the m4b's where my files are renamed and tagged.
-
-4. Run beets on the m4b files.
-
-5. Finally I manually run 02_Audiobook_After_Beets.sh on the beets output directory which will rename any additional files, correct and existing cue, and move them to my library.
-
-This repository contains a collection of scripts and configuration files designed to streamline the processing, organization, and management of audiobooks. These tools are tailored for use with Beets, a powerful music library manager, and include custom scripts for downloading, sorting, and post-processing audiobooks.
-
----
-
-## Table of Contents
-
-- [Overview](#overview)
-- [Features](#features)
-- [Requirements](#requirements)
-- [Setup](#setup)
-- [Scripts](#scripts)
-  - [01_Download_Sort.sh](#01_download_sortsh)
-  - [02_Audiobook_After_Beets.sh](#02_audiobook_after_beetssh)
-- [Configuration](#configuration)
-  - [beets.io.config.yaml](#beetsioconfigyaml)
-- [Usage](#usage)
-- [License](#license)
-
----
-
-## Overview
-
-This project automates the process of managing audiobooks, from downloading and sorting files to organizing metadata and file structures. It leverages Beets for metadata management and includes custom scripts to handle audiobook-specific workflows.
-
----
-
-## Features
-
-- **Automated File Sorting**: Organize audiobook files by metadata such as author, series, and title.
-- **Beets Integration**: Use Beets plugins to fetch metadata, clean tags, and organize files.
-- **Customizable Configuration**: Easily adjust file paths, permissions, and metadata rules.
-- **Web UI**: Optional Beets Web UI for managing your audiobook library.
-- **Support for Sidecar Files**: Preserve additional files like `metadata.yml`, cover images, and more.
-
----
-
-## Requirements
-
-- **Linux Environment**: These scripts are designed for Linux systems.
-- **Beets**: Install Beets with the required plugins.
-- **Bash**: Ensure Bash is available for running the scripts.
-
----
-
-## Setup
-
-1. Clone this repository:
-   ```bash
-   git clone https://github.com/yourusername/Audiobook_Processing_Scripts.git
-   cd Audiobook_Processing_Scripts
-
-2. Install Beets and required plugins:
-pip install beets
-pip install beets[audible,web]
-
-3. Configure Beets using the provided beets.io.config.yaml file:
-cp beets.io.config.yaml ~/.config/beets/config.yaml
-
-4. Make the scripts executable:
-chmod +x 01_Download_Sort.sh 02_Audiobook_After_Beets.sh
-
-Here is the updated content for your README.md file:
-
-```markdown
 # Audiobook Processing Scripts
 
-This repository contains a collection of scripts and configuration files designed to streamline the processing, organization, and management of audiobooks. These tools are tailored for use with Beets, a powerful music library manager, and include custom scripts for downloading, sorting, and post-processing audiobooks.
+This repository contains a collection of scripts and configuration files designed to streamline the processing, organization, and management of audiobooks. These tools are tailored for use with [Beets](https://beets.io/), a powerful music library manager, and include custom scripts for downloading, sorting, and post-processing audiobooks.
 
 ---
 
 ## Table of Contents
 
-- [Overview](#overview)
+- [Workflow Overview](#workflow-overview)
 - [Features](#features)
 - [Requirements](#requirements)
 - [Setup](#setup)
@@ -98,9 +20,30 @@ This repository contains a collection of scripts and configuration files designe
 
 ---
 
-## Overview
+## Workflow Overview
 
-This project automates the process of managing audiobooks, from downloading and sorting files to organizing metadata and file structures. It leverages Beets for metadata management and includes custom scripts to handle audiobook-specific workflows.
+This is the general workflow for processing audiobooks using the scripts in this repository:
+
+1. **Download Audiobooks**:
+   - Use a separate [qBittorrent](https://www.qbittorrent.org/) instance for downloading books.
+   - Use [Libation](https://github.com/rmcrackan/Libation) for managing Audible books.
+
+2. **Sort Downloads**:
+   - Configure qBittorrent to run `01_Download_Sort.sh` after a download completes.
+   - The script sorts files into directories based on their type:
+     - `.m4b` files go directly to the Beets input directory.
+     - `.mp3`, `.m4a`, etc., are sent to the [autom4b](https://github.com/lukechilds/autom4b) directory for conversion.
+     - eBook files are sent to the Calibre import directory.
+
+3. **Convert and Tag**:
+   - After autom4b processes files, they are moved to the Beets input directory.
+   - Run Beets to rename and tag the files.
+
+4. **Post-Processing**:
+   - Run `02_Audiobook_After_Beets.sh` to:
+     - Rename additional files.
+     - Correct existing `.cue` files.
+     - Move processed files to the final library location.
 
 ---
 
@@ -124,24 +67,25 @@ This project automates the process of managing audiobooks, from downloading and 
 
 ## Setup
 
-1. Clone this repository:
+1. **Clone the Repository**:
    ```bash
    git clone https://github.com/yourusername/Audiobook_Processing_Scripts.git
    cd Audiobook_Processing_Scripts
    ```
 
-2. Install Beets and required plugins:
+2. **Install Beets and Plugins**:
    ```bash
    pip install beets
    pip install beets[audible,web]
    ```
 
-3. Configure Beets using the provided `beets.io.config.yaml` file:
+3. **Configure Beets**:
+   Copy the provided `beets.io.config.yaml` file to your Beets configuration directory:
    ```bash
    cp beets.io.config.yaml ~/.config/beets/config.yaml
    ```
 
-4. Make the scripts executable:
+4. **Make Scripts Executable**:
    ```bash
    chmod +x 01_Download_Sort.sh 02_Audiobook_After_Beets.sh
    ```
@@ -160,18 +104,20 @@ This script processes files in a specified input directory, sorts them by file t
   - Skips already processed files unless forced.
 
 - **Usage**:
-  ```bash
-  ./01_Download_Sort.sh [--force] [--dry-run]
-  ```
+   ```bash
+   ./01_Download_Sort.sh [--force] [--dry-run]
+   ```
+
+---
 
 ### 02_Audiobook_After_Beets.sh
 
 This script performs post-processing tasks after Beets has imported audiobooks. It can clean up temporary files, adjust permissions, and organize additional metadata.
 
 - **Usage**:
-  ```bash
-  ./02_Audiobook_After_Beets.sh
-  ```
+   ```bash
+   ./02_Audiobook_After_Beets.sh
+   ```
 
 ---
 
@@ -196,7 +142,10 @@ cp beets.io.config.yaml ~/.config/beets/config.yaml
 ## Usage
 
 1. **Sort Files**:
-   Run the `01_Download_Sort.sh` script to organize files into appropriate directories.
+   Run the `01_Download_Sort.sh` script to organize files into appropriate directories:
+   ```bash
+   ./01_Download_Sort.sh
+   ```
 
 2. **Import into Beets**:
    Use Beets to import and process the sorted files:
@@ -215,10 +164,3 @@ cp beets.io.config.yaml ~/.config/beets/config.yaml
 ## License
 
 This project is licensed under the MIT License. See the `LICENSE` file for details.
-```
-
-### Instructions:
-1. Replace `https://github.com/yourusername/Audiobook_Processing_Scripts.git` with the actual URL of your repository.
-2. Save this content in the README.md file in your project directory.
-
-This README.md provides a comprehensive overview of your project, its features, setup instructions, and usage details.
