@@ -2,13 +2,17 @@
 
 # === Configuration ===
 
+# Overwrite behavior for sidecar files
+# Options: "never", "always", "newer", "larger"
+OVERWRITE_POLICY="never"
+
 # Supported audiobook file extensions to search for (case-insensitive)
 # These will be used to build a search filter for `find`
 AUDIO_EXTENSIONS=("m4b" "M4B")
 
 # Directory to scan for audiobook folders
 # This is the base location where unprocessed audiobook directories live
-TARGET_DIR="/path/to/m4b_input/"
+INPUT_DIR="/path/to/m4b_input/"
 
 # Enable or disable dry-run mode
 # When true, no changes will be made—commands will only be logged
@@ -44,11 +48,11 @@ SET_DIR_MODE="777"
 # Generate a timestamp for unique log file names
 TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
 
-# Define main log file path (removes trailing slash from TARGET_DIR)
-LOG_FILE="${TARGET_DIR%/}/audiobook_rename_$TIMESTAMP.log"
+# Define main log file path (removes trailing slash from INPUT_DIR)
+LOG_FILE="${INPUT_DIR%/}/audiobook_rename_$TIMESTAMP.log"
 
 # Define separate log for skipped directories with multiple audio files
-SKIPPED_MULTIPLE_LOG_FILE="${TARGET_DIR%/}/audiobook_rename_SKIPPED_multi_$TIMESTAMP.log"
+SKIPPED_MULTIPLE_LOG_FILE="${INPUT_DIR%/}/audiobook_rename_SKIPPED_multi_$TIMESTAMP.log"
 
 # === Initialize counters ===
 
@@ -71,8 +75,15 @@ log() {
 
 # === Validation checks ===
 
+# === Validate Overwrite Policy ===
+VALID_POLICIES=("never" "always" "newer" "larger")
+if [[ ! " ${VALID_POLICIES[*]} " =~ " ${OVERWRITE_POLICY} " ]]; then
+    echo "Error: Invalid OVERWRITE_POLICY '$OVERWRITE_POLICY'. Must be one of: ${VALID_POLICIES[*]}" >&2
+    exit 1
+fi
+
 # Ensure the target directory exists
-[[ ! -d "$TARGET_DIR" ]] && echo "Error: Target dir missing: $TARGET_DIR" && exit 1
+[[ ! -d "$INPUT_DIR" ]] && echo "Error: Target dir missing: $INPUT_DIR" && exit 1
 
 # Ensure we can write to the log file
 ! touch "$LOG_FILE" 2>/dev/null && echo "Error: Cannot write log: $LOG_FILE" && exit 1
@@ -83,7 +94,9 @@ log() {
 # === Script start logging ===
 
 log "=== Audiobook Sidecar Renamer ==="
-log "Target: $TARGET_DIR"
+log "Overwrite Policy     : $OVERWRITE_POLICY"
+log "Audio Extensions     : ${AUDIO_EXTENSIONS[*]}"
+log "Target: $INPUT_DIR"
 log "Move Fixed: $MOVE_FIXED → $MOVE_TARGET"
 log "Dry Run: $DRY_RUN"
 log "Fix .cue FILE line : $FIX_CUE"
@@ -104,7 +117,7 @@ unset 'iname_args[-1]'  # Remove final dangling -o
 # === Find unique directories containing audiobook files ===
 
 mapfile -t unique_dirs < <(
-    find "$TARGET_DIR" -type f \( "${iname_args[@]}" \) -exec dirname {} \; | sort -u
+    find "$INPUT_DIR" -type f \( "${iname_args[@]}" \) -exec dirname {} \; | sort -u
 )
 log "DEBUG: Found ${#unique_dirs[@]} audiobook directories"
 
@@ -189,11 +202,42 @@ for base_dir in "${unique_dirs[@]}"; do
             new_path="$base_dir/${base_name_no_ext}.$ext"
 
             # If filename is already correct, skip; otherwise rename it
-            if [[ "$file" != "$new_path" ]]; then
-                if [[ -e "$new_path" ]]; then
-                    # Skip if target filename already exists
-                    log "Skipping: $new_path already exists"
+            if [[ -e "$new_path" ]]; then
+                overwrite_decision="skip"
+
+                case "$OVERWRITE_POLICY" in
+                    always)
+                        overwrite_decision="overwrite"
+                        ;;
+                    newer)
+                        if [[ "$file" -nt "$new_path" ]]; then
+                            overwrite_decision="overwrite"
+                        fi
+                        ;;
+                    larger)
+                        src_size=$(stat -c%s "$file")
+                        dst_size=$(stat -c%s "$new_path")
+                        if (( src_size > dst_size )); then
+                            overwrite_decision="overwrite"
+                        fi
+                        ;;
+                    *)
+                        overwrite_decision="skip"
+                        ;;
+                esac
+
+                if [[ "$overwrite_decision" == "overwrite" ]]; then
+                    if $DRY_RUN; then
+                        log "[DRY RUN] mv -f \"$file\" \"$new_path\""
+                    else
+                        mv -f "$file" "$new_path" && log "Overwrote: $new_path" || log "❌ Failed to overwrite: $new_path"
+                        ((count_renamed++))
+                    fi
+                else
+                    log "Skipping (exists): $new_path"
                     ((count_skipped++))
+                fi
+
                 else
                     if $DRY_RUN; then
                         log "[DRY RUN] mv \"$file\" \"$new_path\""
@@ -294,8 +338,8 @@ fi
 # === Move processed directory to final location ===
 if [[ "$MOVE_FIXED" == true ]]; then
 
-    # Compute relative path from TARGET_DIR to preserve directory structure
-    rel_path="${base_dir#$TARGET_DIR}"
+    # Compute relative path from INPUT_DIR to preserve directory structure
+    rel_path="${base_dir#$INPUT_DIR}"
     dest="$MOVE_TARGET/$rel_path"
 
     # Ensure destination directory exists (even if nested)
@@ -332,9 +376,9 @@ if [[ "$MOVE_FIXED" == true ]]; then
             -name "._*" \
              \) -type f -delete
 
-            # === Recursively remove empty directories up to $TARGET_DIR ===
+            # === Recursively remove empty directories up to $INPUT_DIR ===
             dir="$base_dir"
-            while [[ "$dir" != "$TARGET_DIR" && "$dir" != "/" ]]; do
+            while [[ "$dir" != "$INPUT_DIR" && "$dir" != "/" ]]; do
                 if [ -d "$dir" ] && [ -z "$(find "$dir" -mindepth 1 -type f)" ]; then
                     rmdir "$dir" && log "Removed empty dir: $dir"
                     ((count_dirs_moved++))
