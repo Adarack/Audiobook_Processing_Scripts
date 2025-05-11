@@ -1,6 +1,6 @@
 # Audiobook Processing Scripts
 
-This repository contains a collection of scripts and configuration files designed to streamline the processing, organization, and management of audiobooks. These tools are tailored for use with [Beets](https://beets.io/), a powerful music library manager, and include custom scripts for downloading, sorting, and post-processing audiobooks.
+This repository contains a collection of scripts and configuration files designed to streamline the processing, organization, and management of audiobooks. These tools are tailored for use with [Beets](https://beets.io/), a powerful music library manager, and include custom scripts for downloading, sorting, and post-processing audiobooks. I run these scripts on Unraid with the qBittorrent and beets-audible dockers. They have not been tested on any other OS.
 
 ---
 
@@ -105,7 +105,7 @@ This is the general workflow for processing audiobooks using the scripts in this
 
 ### 01_Download_Sort.sh
 
-This script processes files in a specified input directory, sorts them by file type (e.g., MP3, M4B, EPUB), and moves them to designated output directories.
+This script processes files in a specified input directory, sorts them by file type (e.g., MP3, M4B, EPUB), and moves them to designated output directories. This is run by qBittorrent after each download,  It can also be manually run from the Unraid userscripts plugin.
 
 - **Key Features**:
   - Supports dry-run mode to simulate actions.
@@ -134,7 +134,7 @@ This script processes files in a specified input directory, sorts them by file t
 
 ### 02_Audiobook_After_Beets.sh
 
-This script performs post-processing tasks after Beets has imported audiobooks. It can clean up temporary files, adjust permissions, and organize additional metadata.
+This script performs post-processing tasks after Beets has imported audiobooks. It can clean up temporary files, adjust permissions, and organize additional metadata. I run it with the userscripts Unraid plugin.
 
 - **Usage**:
    ```bash
