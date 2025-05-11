@@ -91,6 +91,14 @@ This is the general workflow for processing audiobooks using the scripts in this
    chmod +x 01_Download_Sort.sh 02_Audiobook_After_Beets.sh
    ```
 
+5. **Edit the Configuration Section of each script.**:
+   You need to set all the directories and file types options in each script for your enviroment.
+   '''bash
+   nano 01_Download_Sort.sh
+
+   nano 02_Audiobook_After_Beets.sh
+   '''
+
 ---
 
 ## Scripts
