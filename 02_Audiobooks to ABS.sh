@@ -8,11 +8,11 @@ OVERWRITE_POLICY="never"
 
 # Supported audiobook file extensions to search for (case-insensitive)
 # These will be used to build a search filter for `find`
-AUDIO_EXTENSIONS=("m4b" "M4B")
+AUDIO_EXTENSIONS=("m4b" "M4B" "mp3" "MP3")
 
 # Directory to scan for audiobook folders
 # This is the base location where unprocessed audiobook directories live
-INPUT_DIR="/path/to/m4b_input/"
+INPUT_DIR="/path/to/beets/processed"
 
 # Enable or disable dry-run mode
 # When true, no changes will be made—commands will only be logged
@@ -25,7 +25,7 @@ FIX_CUE=true
 MOVE_FIXED=true
 
 # Destination for moved audiobook folders (if MOVE_FIXED is true)
-MOVE_TARGET="/path/to/m4b_output/"
+MOVE_TARGET="/path/to/audiobookshelf/library"
 
 # Files that should not be renamed to match the audiobook file
 # These will be excluded from the sidecar renaming loop
@@ -33,7 +33,7 @@ EXCLUDE_FILES=("cover.jpg" "folder.jpg" "reader.txt" "desc.txt" "metadata.json" 
 
 # Desired ownership for all files and directories (user:group)
 # Leave empty ("") to skip changing ownership
-SET_OWNER="nobody:nobody"
+SET_OWNER="99:100"
 
 # Desired file permission mode (e.g., 644 or 777)
 # Leave empty ("") to skip chmod on files
@@ -246,7 +246,6 @@ for base_dir in "${unique_dirs[@]}"; do
                         ((count_renamed++))
                     fi
                 fi
-            fi
 
             # === Update cue file to match the new audiobook filename ===
             if [[ "$FIX_CUE" == true && "$ext" == "cue" ]]; then

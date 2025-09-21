@@ -1,169 +1,163 @@
 #!/bin/bash
 
+# "/path/to/01_Download_Sort.sh" "%F"
+# chmod +x /path/to/01_Download_Sort.sh
+#
+# This script sorts downloaded audiobook or ebook files by file extension type.
+# It copies the *entire directory* containing each matching file into the appropriate
+# destination, using just the leaf directory name (via basename) for the destination.
+# 
+# It now supports passing either:
+#   - an entire input directory (will scan recursively for files)
+#   - a single file (will process it directly)
+# 
+# It also maintains a copy log to avoid redundant copying,
+# unless you force it with --force.
+
 # === CONFIGURATION ===
+# Directory to scan by default if not overridden by arguments
+INPUT_DIR="/path/to/downloads/complete"
 
-INPUT_DIR="/path/to/input"
-MANUAL_LABEL="Brandon Sanderson"
-ALWAYS_OVERWRITE=false            # Delete target before copy
-FORCE_RECOPY=true
-DRY_RUN=false
-VERBOSE=true
+# Where to store log files (defaults to current directory)
+LOG_DIR="/path/to/downloads/complete/logs"  # "./" is default
 
-# Optional post-copy ownership/permissions
-SET_OWNER="nobody:nobody"        # e.g. nobody:users
-SET_MODE="777"                   # File permission
-SET_DIR_MODE="777"               # Directory permission
-
+# Map of file extensions to their target directories
 declare -A FILETYPE_DIRS=(
-  ["mp3"]="/path/to/mp3_output"
-  ["m4b"]="/path/to/m4b_output"
-  ["epub"]="/path/to/ebooks_output"
-  ["mobi"]="/path/to/ebooks_output"
-  ["pdf"]="/path/to/ebooks_output"
+  ["mp3"]="/path/to/autom4b/input"        # MP3 audiobooks
+  ["m4a"]="/path/to/autom4b/input"        # M4A audiobooks
+  ["m4b"]="/path/to/beets/untagged"       # M4B audiobooks
+  ["epub"]="/path/to/calibre/import"      # EPUB ebooks
+  ["mobi"]="/path/to/calibre/import"      # MOBI ebooks
+  ["pdf"]="/path/to/calibre/import"       # PDF ebooks
 )
 
+# Multi-M4B handling configuration
+ENABLE_MULTI_M4B_REDIRECT=true          # Enable special handling for multiple M4B files
+MULTI_M4B_DEST_DIR="/path/to/autom4b/input"  # Where to send directories with multiple M4B files
+
+# Behavior flags
+FORCE_RECOPY=false  # If true, ignores copy log and re-copies everything
+DRY_RUN=false       # If true, simulates actions without copying
+
+# === LOGGING SETUP ===
+mkdir -p "$LOG_DIR"  # Ensure log directory exists
 TIMESTAMP="$(date +'%Y-%m-%d_%H-%M-%S')"
-COPIED_LOG="${INPUT_DIR%/}/.copied_dirs.log"
-ACTION_LOG="${INPUT_DIR%/}/copy_debug_$TIMESTAMP.log"
-mkdir -p "$(dirname "$ACTION_LOG" 2>/dev/null || echo .)"
+COPIED_LOG="$LOG_DIR/copied_dirs.log"                 # Tracks directories already copied
+ACTION_LOG="$LOG_DIR/copy_debug_$TIMESTAMP.log"       # Log file for all script actions
 
 # === ARGUMENT PARSING ===
+if [[ -n "$1" && ! "$1" =~ ^-- ]]; then
+  INPUT_DIR="$1"
+  shift
+fi
+
 for arg in "$@"; do
-  [[ -z "$arg" || "$arg" == "$0" ]] && continue
   case "$arg" in
-    --force) FORCE_RECOPY=true ;;
-    --dry-run) DRY_RUN=true ;;
-    --verbose) VERBOSE=true ;;
+    --force)
+      FORCE_RECOPY=true ;;
+    --dry-run)
+      DRY_RUN=true ;;
     *)
-      echo "Unknown argument: '$arg'"
-      echo "Usage: $0 [--force] [--dry-run] [--verbose]"
-      exit 1
-      ;;
+      echo "Unknown argument: $arg"
+      echo "Usage: $0 [input_dir_or_file] [--force] [--dry-run]"
+      exit 1 ;;
   esac
 done
 
-# === LOGGING ===
+# === FUNCTION FOR TIMESTAMPED LOGGING ===
 log() {
   local message="[$(date +'%Y-%m-%d %H:%M:%S')] $*"
   echo "$message" | tee -a "$ACTION_LOG"
 }
 
-# === STARTUP ===
+# === STARTUP LOG OUTPUT ===
 log "=== Script Started ==="
-log "Input directory: $INPUT_DIR"
-[[ "$FORCE_RECOPY" == true ]] && log "Force recopy: ENABLED"
-[[ "$ALWAYS_OVERWRITE" == true ]] && log "Always overwrite: ENABLED"
-[[ "$DRY_RUN" == true ]] && log "Dry-run mode: ENABLED"
-[[ "$VERBOSE" == true ]] && log "Verbose mode: ENABLED"
-[[ -n "$MANUAL_LABEL" ]] && log "Manual label: $MANUAL_LABEL"
+log "Input: $INPUT_DIR"
+[[ "$FORCE_RECOPY" == true ]] && log "Force recopy: ENABLED" || log "Using copy log: $COPIED_LOG"
+[[ "$DRY_RUN" == true ]] && log "Dry-run mode: ENABLED (no actual copy)" || log "Dry-run mode: OFF"
 
-count_chown=0
-count_chmod=0
-
+# === LOAD PREVIOUSLY COPIED RECORDS ===
 declare -A COPIED
-cleaned_log=()
-
-# === CLEAN COPIED LOG ===
-if [[ -f "$COPIED_LOG" && "$FORCE_RECOPY" == false && "$ALWAYS_OVERWRITE" == false ]]; then
+if [[ -f "$COPIED_LOG" && "$FORCE_RECOPY" == false ]]; then
   while IFS= read -r line; do
-    [[ -z "$line" ]] && continue
-    full_path="$INPUT_DIR${line// - //}"
-    if [[ -d "$full_path" ]]; then
-      COPIED["$line"]=""
-      cleaned_log+=("$line")
-    else
-      log "CLEANUP: Removed stale log entry: $line"
-    fi
+    [[ -n "$line" ]] && COPIED["$line"]=1
   done < "$COPIED_LOG"
-  printf "%s\n" "${cleaned_log[@]}" > "$COPIED_LOG"
 fi
 
-# === MAIN LOGIC ===
-shopt -s nullglob
+# === TRACK SUMMARY COUNTS ===
+copied_count=0
+skipped_count=0
 
-while IFS= read -r -d '' file; do
+# === BUILD THE LIST OF FILES TO PROCESS ===
+files_to_process=()
+
+if [[ -f "$INPUT_DIR" ]]; then
+  log "Input is a single file."
+  files_to_process+=("$INPUT_DIR")
+elif [[ -d "$INPUT_DIR" ]]; then
+  log "Input is a directory. Scanning for files inside."
+  while IFS= read -r -d '' file; do
+    files_to_process+=("$file")
+  done < <(find "$INPUT_DIR" -type f -print0)
+else
+  log "ERROR: Input path is neither a file nor a directory: $INPUT_DIR"
+  exit 1
+fi
+
+# === MAIN PROCESSING LOOP ===
+for file in "${files_to_process[@]}"; do
+  # Extract file extension (lowercase)
   ext="${file##*.}"
+  [[ "$file" == "$ext" ]] && ext=""
   ext="${ext,,}"
-  subdir="$(dirname "$file")"
-  rel_path="${subdir#$INPUT_DIR}"
-  flattened_path="${rel_path//\// - }"
-  flattened_path="${flattened_path## }"
-  [[ -n "$MANUAL_LABEL" ]] && flattened_path="$MANUAL_LABEL - ${flattened_path}"
-
-  [[ "$VERBOSE" == true ]] && log "FOUND FILE: $file (ext: $ext)"
 
   if [[ -n "${FILETYPE_DIRS[$ext]}" ]]; then
-    dest_dir="${FILETYPE_DIRS[$ext]}"
-    target_dir="${dest_dir}${flattened_path}"
+    subdir="$(dirname "$file")"
+    rel_path="$(basename "$subdir")"
 
-    if [[ "$ALWAYS_OVERWRITE" == false && "$FORCE_RECOPY" == false && -n "${COPIED[$flattened_path]}" ]]; then
-      log "SKIP (already copied): $flattened_path"
+    # Skip if already copied
+    if [[ "$FORCE_RECOPY" == false && -n "${COPIED[$rel_path]}" ]]; then
+      log "SKIP (already copied): $rel_path"
+      ((skipped_count++))
       continue
     fi
 
+    # Multi-M4B handling logic
+    if [[ "$ENABLE_MULTI_M4B_REDIRECT" == true && "$ext" == "m4b" ]]; then
+      num_m4b_files=$(find "$subdir" -maxdepth 1 -iname "*.m4b" | wc -l)
+      if (( num_m4b_files > 1 )); then
+        log "NOTE: Multiple m4b files detected in $subdir. Redirecting to multi-M4B destination."
+        dest_dir="$MULTI_M4B_DEST_DIR"
+      else
+        dest_dir="${FILETYPE_DIRS[$ext]}"
+      fi
+    else
+      dest_dir="${FILETYPE_DIRS[$ext]}"
+    fi
+
+    target_dir="${dest_dir%/}/$rel_path"
+
     if [[ "$DRY_RUN" == true ]]; then
-      log "DRY-RUN RSYNC: $subdir → $target_dir"
+      log "DRY-RUN COPY DIR: $subdir --> $target_dir"
     else
-      if [[ "$ALWAYS_OVERWRITE" == true && -d "$target_dir" ]]; then
-        log "OVERWRITE: Removing $target_dir"
-        rm -rf "$target_dir"
+      log "COPY DIR: $subdir --> $target_dir"
+      mkdir -p "$target_dir"
+      if cp -a "$subdir/." "$target_dir/"; then
+        COPIED["$rel_path"]=1
+        ((copied_count++))
+      else
+        log "ERROR: Failed to copy $subdir"
       fi
     fi
-
-    mkdir -p "$target_dir"
-    rsync_opts="-a --progress"
-    [[ "$DRY_RUN" == true ]] && rsync_opts+=" --dry-run"
-    [[ "$VERBOSE" == true ]] && rsync_opts+=" --itemize-changes"
-
-    if rsync $rsync_opts "$subdir/" "$target_dir/"; then
-      echo "$flattened_path" >> "$COPIED_LOG"
-      COPIED["$flattened_path"]="$target_dir"
-    else
-      log "❌ ERROR: rsync failed from $subdir to $target_dir"
-    fi
-  else
-    [[ "$VERBOSE" == true ]] && log "IGNORED: $file (unmatched extension)"
   fi
+done
 
-  
-done < <(find "$INPUT_DIR" -type f -print0)
 
-# === FINAL PERMISSION PASS ===
-if [[ "$DRY_RUN" == false && ( -n "$SET_OWNER" || -n "$SET_MODE" || -n "$SET_DIR_MODE" ) ]]; then
-  log "Applying ownership and permissions to all copied targets..."
-  set +e
-  for flattened_path in "${!COPIED[@]}"; do
-    target_dir="${COPIED[$flattened_path]}"
-    [[ -z "$target_dir" ]] && continue
-
-    while IFS= read -r -d '' item; do
-      if [[ -n "$SET_OWNER" ]]; then
-        current_owner=$(stat -c "%U:%G" "$item" 2>/dev/null)
-        if [[ "$current_owner" != "$SET_OWNER" ]]; then
-          chown "$SET_OWNER" "$item" && log "chown $SET_OWNER \"$item\"" || log "❌ chown failed: $item"
-          ((count_chown++))
-        fi
-      fi
-      if [[ -n "$SET_MODE" && -f "$item" ]]; then
-        current_mode=$(stat -c "%a" "$item" 2>/dev/null)
-        if [[ "$current_mode" != "$SET_MODE" ]]; then
-          chmod "$SET_MODE" "$item" && log "chmod $SET_MODE \"$item\"" || log "❌ chmod failed: $item"
-          ((count_chmod++))
-        fi
-      fi
-      if [[ -n "$SET_DIR_MODE" && -d "$item" ]]; then
-        current_mode=$(stat -c "%a" "$item" 2>/dev/null)
-        if [[ "$current_mode" != "$SET_DIR_MODE" ]]; then
-          chmod "$SET_DIR_MODE" "$item" && log "chmod $SET_DIR_MODE \"$item\"" || log "❌ chmod failed: $item"
-          ((count_chmod++))
-        fi
-      fi
-    done < <(find "$target_dir" -print0)
-  done
-  set -e
+# === SAVE UPDATED COPY LOG ===
+if [[ "$DRY_RUN" == false ]]; then
+  printf "%s\n" "${!COPIED[@]}" > "$COPIED_LOG"
 fi
 
-trap '' SIGPIPE
-log "chown actions: $count_chown"
-log "chmod actions: $count_chmod"
+# === FINAL SUMMARY LOG ===
 log "=== Script Finished ==="
+log "Summary: $copied_count copied, $skipped_count skipped."
