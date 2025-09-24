@@ -1,3 +1,13 @@
+What I wanted was to standardize my entire library using a single MP4 as the audio file format. I also wanted the directory naming and structure to be exactly the same for all books with accurate metadata.
+So I created a workflow that works for me. I start by manually finding and downloading the books I want, then the sort script copies them into folders to be processed as needed:
+
+Ebooks go to the Calibre import directory
+Single M4B files go to the import directory for beets
+Multi-M4B and all other audio files go to auto-m4b to be converted into a single M4B
+Auto-m4b output goes to the beets import directory
+Beets gets everything named using the standard method I want to use
+Audiobooks to ABS does the final touches and moves everything into Audiobookshelf
+
 # Audiobook Processing Scripts
 
 Automated audiobook processing pipeline for Unraid systems, integrating qBittorrent, Beets with Audible plugin, autom4b, and AudioBookshelf (ABS).
