@@ -1,4 +1,4 @@
-What I wanted was to standardize my entire library using a single MP4 as the audio file format. I also wanted the directory naming and structure to be exactly the same for all books with accurate metadata.
+What I wanted was to standardize my entire library using a single M4B as the audio file format. I also wanted the directory naming and structure to be exactly the same for all books with accurate metadata.
 So I created a workflow that works for me. I start by manually finding and downloading the books I want, then the sort script copies them into folders to be processed as needed:
 
 Ebooks go to the Calibre import directory
