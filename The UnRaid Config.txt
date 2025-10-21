@@ -1,0 +1,26 @@
+The UnRaid Config
+
+You will need to use docker to install auto-m4b and beets. beets has a few extra items that need to be configured.
+
+At the time of this writing the audible plugin for beets from linuxserver.io only supports up to v2.3.0. 
+So when installing the Community Applications template make sure to set the Repository to lscr.io/linuxserver/beets:2.3.0
+
+After configuring it how you like and starting it for the first time, stop the container.
+
+In user/appdata/beets
+Rename the default config.yaml to config.yaml.stock
+Paste beets-audible.config.yaml and the custom-cont-init.d directory
+Rename beets-audible.config.yaml to config.yaml and edit the directories in the config.yaml to match your setup.
+
+
+
+Next, for the linuxserver docker mods. https://github.com/linuxserver/docker-mods
+Edit the beets container in the UnRaid docker UI. 
+Click "Add another Path, Port, Variable, Label or Device"
+
+Config Type: Path
+Name: custom-cont-init.d
+Container Path: /custom-cont-init.d
+Host Path: /mnt/user/appdata/beets/custom-cont-init.d/
+
+Finally start the container again. It will run the install-deps.sh script on startup and install the beets-audible beets-copyartifacts3 beets[web] plugins for beets.

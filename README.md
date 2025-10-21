@@ -17,11 +17,17 @@ Automated audiobook processing pipeline for Unraid systems, integrating qBittorr
 ## Table of Contents
 
 - [Workflow Overview](#workflow-overview)
-- [1. qBittorrent Setup](#1-qbittorrent-setup)
-- [2. Download Sort Script](#2-download-sort-script-01_download_sortsh)
-- [3. Beets with Audible Plugin](#3-beets-with-audible-plugin)
-- [4. Post-Processing to ABS](#4-post-processing-to-abs-02_audiobooks-to-abssh)
-- [5. AudioBookshelf Integration](#5-audiobookshelf-integration)
+- [Unraid Docker Setup Guide](#unraid-docker-setup-guide)
+  - [Install Docker Containers](#part-1-install-required-docker-containers)
+  - [Configure Beets](#part-2-configure-beets-for-audiobook-processing)
+  - [Configure Scripts](#part-3-configure-processing-scripts)
+  - [Verification & Testing](#part-4-verification-and-testing)
+- [Standard Linux Setup](#standard-linux-setup)
+  - [1. qBittorrent Setup](#1-qbittorrent-setup)
+  - [2. Download Sort Script](#2-download-sort-script-01_download_sortsh)
+  - [3. Beets with Audible Plugin](#3-beets-with-audible-plugin)
+  - [4. Post-Processing to ABS](#4-post-processing-to-abs-02_audiobooks-to-abssh)
+  - [5. AudioBookshelf Integration](#5-audiobookshelf-integration)
 - [Complete Workflow Example](#complete-workflow-example)
 - [Troubleshooting](#troubleshooting)
 - [Requirements](#requirements)
@@ -47,7 +53,187 @@ This pipeline automates the entire audiobook workflow from download to library:
 
 ---
 
-## 1. qBittorrent Setup
+## Unraid Docker Setup Guide
+
+This section provides complete setup instructions for Unraid users using Docker containers. If you're running standard Linux, skip to [Standard Linux Setup](#standard-linux-setup).
+
+### Overview
+
+You'll install three Docker containers:
+- **autom4b** - Converts audio files (MP3, M4A, FLAC) to M4B format
+- **Beets** - Tags audiobooks with Audible metadata
+- **qBittorrent** - Downloads audiobooks (if not already installed)
+
+### Part 1: Install Required Docker Containers
+
+#### 1.1 Install autom4b
+
+1. Open **Community Applications** in Unraid
+2. Search for "autom4b"
+3. Install and configure:
+   - **Input Directory**: `/mnt/user/Media/Processing/autom4b_input`
+   - **Output Directory**: `/mnt/user/Media/Processing/beets_untagged`
+4. Start the container
+
+#### 1.2 Install Beets (with Audible Plugin)
+
+**CRITICAL VERSION REQUIREMENT**: The Audible plugin for Beets from linuxserver.io only supports up to **version 2.3.0**.
+
+1. Open **Community Applications** and search for "beets"
+2. Select the **linuxserver/beets** template
+3. **Before installing**, change the **Repository** field to:
+   ```
+   lscr.io/linuxserver/beets:2.3.0
+   ```
+4. Configure basic paths:
+   - **Config Directory**: `/mnt/user/appdata/beets`
+   - **Music/Audiobooks Directory**: `/mnt/user/Media/Processing/beets_tagged`
+   - **Downloads**: `/mnt/user/Media/Processing/beets_untagged`
+5. Click "Apply" to install the container
+6. **Start the container** (creates initial config directory structure)
+7. **Stop the container** (we need to modify configs before running properly)
+
+### Part 2: Configure Beets for Audiobook Processing
+
+#### 2.1 Replace Default Configuration
+
+1. **Navigate** to `/mnt/user/appdata/beets` on your Unraid server
+2. **Backup the default config**:
+   ```bash
+   mv config.yaml config.yaml.stock
+   ```
+3. **Copy custom configuration files** from this repository:
+   - Copy `beets-audible.config.yaml` → `/mnt/user/appdata/beets/`
+   - Copy `custom-cont-init.d/` directory → `/mnt/user/appdata/beets/`
+4. **Rename the custom config**:
+   ```bash
+   mv beets-audible.config.yaml config.yaml
+   ```
+5. **Edit `config.yaml`** to match your directory paths:
+   - Update `directory:` to your final library location
+   - Verify paths match your Docker container mappings
+   - Save the file
+
+#### 2.2 Add Docker Mod for Plugin Installation
+
+This enables automatic installation of required Beets plugins on container startup.
+
+1. **Edit the Beets container** in Unraid's Docker UI
+2. Click **"Add another Path, Port, Variable, Label or Device"**
+3. Configure the new path:
+   - **Config Type**: Path
+   - **Name**: `custom-cont-init.d`
+   - **Container Path**: `/custom-cont-init.d`
+   - **Host Path**: `/mnt/user/appdata/beets/custom-cont-init.d/`
+   - **Access Mode**: Read Only
+4. Click "Apply" to save
+
+#### 2.3 Start Beets and Verify
+
+1. **Start the Beets container**
+2. **Check container logs** to verify:
+   - `install-deps.sh` executed successfully
+   - Plugins installed: `beets-audible`, `beets-copyartifacts3`, `beets[web]`
+
+### Part 3: Configure Processing Scripts
+
+#### 3.1 Configure 01_Download_Sort.sh
+
+1. Open `01_Download_Sort.sh` in a text editor
+2. Update configuration variables (lines 17-35):
+   ```bash
+   INPUT_DIR="/mnt/user/Downloads/complete"
+   LOG_DIR="/mnt/user/Downloads/complete/logs"
+
+   FILETYPE_DIRS=(
+       ["mp3"]="/mnt/user/Media/Processing/autom4b_input"
+       ["m4a"]="/mnt/user/Media/Processing/autom4b_input"
+       ["m4b"]="/mnt/user/Media/Processing/beets_untagged"
+       ["epub"]="/mnt/user/Media/Processing/calibre_import"
+   )
+
+   ENABLE_MULTI_M4B_REDIRECT=true
+   MULTI_M4B_DEST_DIR="/mnt/user/Media/Processing/autom4b_input"
+   ```
+3. Make executable:
+   ```bash
+   chmod +x 01_Download_Sort.sh
+   ```
+
+#### 3.2 Configure 02_Audiobooks to ABS.sh
+
+1. Open `02_Audiobooks to ABS.sh` in a text editor
+2. Update configuration variables (lines 5-44):
+   ```bash
+   INPUT_DIR="/mnt/user/Media/Processing/beets_tagged"
+   MOVE_TARGET="/mnt/user/Media/Audiobooks"
+   OVERWRITE_POLICY="newer"
+   PUID=99
+   PGID=100
+   ```
+3. Make executable:
+   ```bash
+   chmod +x "02_Audiobooks to ABS.sh"
+   ```
+
+#### 3.3 Integrate with qBittorrent
+
+1. Open **qBittorrent settings**
+2. Navigate to **Downloads** → **Run external program on torrent completion**
+3. Enable and add:
+   ```bash
+   /mnt/user/scripts/audiobook-processing/01_Download_Sort.sh "%F"
+   ```
+   (Adjust path to where you stored the script)
+
+### Part 4: Verification and Testing
+
+#### 4.1 Test Download Sorting
+
+```bash
+# Dry run test
+./01_Download_Sort.sh --dry-run --verbose /path/to/test/audiobook
+```
+
+Review output to ensure files would route correctly.
+
+#### 4.2 Test Complete Pipeline
+
+1. **Download a test audiobook** via qBittorrent
+2. **Verify file sorting**:
+   - Check logs: `$LOG_DIR/download_sort_*.log`
+   - Verify files moved to autom4b input (if MP3/M4A) or beets_untagged (if M4B)
+3. **Wait for autom4b** to convert (if applicable)
+4. **Run Beets import**:
+   ```bash
+   docker exec -it beets beet import /downloads
+   ```
+5. **Run post-processing**:
+   ```bash
+   ./02_Audiobooks\ to\ ABS.sh
+   ```
+6. **Verify** files in final library location
+
+#### 4.3 Directory Structure Example
+
+Your final directory structure should look like:
+```
+/mnt/user/Media/
+├── Downloads/              # qBittorrent download location
+├── Processing/
+│   ├── autom4b_input/     # 01_Download_Sort.sh sends MP3/M4A here
+│   ├── beets_untagged/    # autom4b outputs + single M4B files
+│   └── beets_tagged/      # Beets outputs tagged audiobooks
+└── Audiobooks/            # Final library (AudioBookshelf)
+```
+
+---
+
+## Standard Linux Setup
+
+The following sections apply to standard Linux installations (non-Docker) or provide additional configuration details for both Unraid and Linux systems.
+
+### 1. qBittorrent Setup
 
 ### Configure Download Completion Action
 1. In qBittorrent settings, go to **Downloads** → **Run external program on torrent completion**
@@ -194,10 +380,10 @@ OVERWRITE_POLICY="never"  # Options: never, always, newer, larger
 ### Usage
 ```bash
 # Run post-processing
-./02_Audiobooks\ to\ ABS.sh
+./02_Audiobooks_to_ABS.sh
 
 # Test mode (edit script to set DRY_RUN=true)
-DRY_RUN=true ./02_Audiobooks\ to\ ABS.sh
+DRY_RUN=true ./02_Audiobooks_to_ABS.sh
 ```
 
 ### Processing Steps
@@ -249,7 +435,7 @@ Final organized structure:
    ```bash
    beet -c beets-audible.config.yaml import /path/to/beets/untagged
    ```
-4. **Post-Process**: Run `02_Audiobooks to ABS.sh` to finalize
+4. **Post-Process**: Run `02_Audiobooks_to_ABS.sh` to finalize
 5. **Library**: AudioBookshelf automatically imports from watched folder
 
 ---
@@ -260,6 +446,7 @@ Final organized structure:
 - Download sort: `/path/to/downloads/complete/logs/`
 - Post-processing: `/path/to/beets/processed/audiobook_processing.log`
 - Beets: Run with `-v` flag for verbose output
+- Docker containers: Check Unraid Docker tab for container logs
 
 ### Common Issues
 
@@ -267,14 +454,15 @@ Final organized structure:
 - Check qBittorrent is calling script with correct path
 - Verify script has execute permissions: `chmod +x 01_Download_Sort.sh`
 - Run manually with `--verbose` flag to see detailed output
+- For Unraid: Ensure qBittorrent has access to script location
 
 **Beets not finding matches**
 - Use interactive mode: `beet import -s`
 - Try from filename: `beet import -f`
-- Check Audible plugin is installed: `pip list | grep audible`
+- Check Audible plugin is installed: `pip list | grep audible` (Linux) or `docker exec beets pip list | grep audible` (Unraid)
 
 **Sidecar files not renamed**
-- Check `OVERWRITE_POLICY` setting in `02_Audiobooks to ABS.sh`
+- Check `OVERWRITE_POLICY` setting in `02_Audiobooks_to_ABS.sh`
 - Verify file permissions (should be 99:100 for Unraid)
 - Run with `DRY_RUN=true` to test
 
@@ -282,6 +470,46 @@ Final organized structure:
 - Verify library path matches `MOVE_TARGET`
 - Check folder watching is enabled
 - Ensure proper permissions on target directory
+
+### Unraid Docker-Specific Issues
+
+**Beets plugins not installing**
+- **Symptoms**: Beets doesn't recognize `audible` plugin commands
+- **Solutions**:
+  1. Check container logs for errors during startup
+  2. Verify `custom-cont-init.d` path mapping is correct
+  3. Ensure `install-deps.sh` has execute permissions
+  4. Manually install: `docker exec -it beets pip install beets-audible beets-copyartifacts3 beets[web]`
+
+**Metadata not fetching from Audible**
+- **Symptoms**: Beets imports audiobooks but without Audible metadata
+- **Solutions**:
+  1. Verify Audible plugin installed: `docker exec beets beet version`
+  2. Check `config.yaml` has `audible` in plugins list
+  3. Ensure audiobook files have reasonable filenames for matching
+  4. Try manual fetch: `docker exec beets beet audible -f`
+
+**Version compatibility issues**
+- **Symptoms**: Audible plugin errors after Beets update
+- **Solutions**:
+  1. Verify container running version 2.3.0: `docker exec beets beet version`
+  2. If updated accidentally, change repository back to `lscr.io/linuxserver/beets:2.3.0`
+  3. Recreate the container with correct version
+
+**Permission errors in Docker containers**
+- **Symptoms**: Files created with wrong ownership, access denied errors
+- **Solutions**:
+  1. Verify PUID=99 and PGID=100 in Docker container settings
+  2. Check host paths are accessible by user nobody (99:100)
+  3. Manually fix: `chown -R 99:100 /mnt/user/Media/Processing/`
+
+**Path mapping issues**
+- **Symptoms**: Container can't find files, "No such file or directory" errors
+- **Solutions**:
+  1. Verify all Docker path mappings are correct in container settings
+  2. Ensure host paths actually exist
+  3. Check paths in `config.yaml` match container paths (not host paths)
+  4. Example: If host path is `/mnt/user/Media/Processing/beets_untagged` and container path is `/downloads`, use `/downloads` in config.yaml
 
 ---
 
